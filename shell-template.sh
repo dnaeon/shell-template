@@ -38,11 +38,14 @@ export LANG=C
 # Program global variables
 _PROG_NAME="${0##*/}"					# program name
 _PROG_VERSION="1.0"					# program version
+
 _PROG_PREFIX="/usr/local"				# program prefix (e.g. /usr/local), if applicable
 _PROG_CONFIG="${_PROG_PREFIX}/etc/${_PROG_NAME}.conf" 	# program configuration file, if applicable
-_PROG_LOGFILE="/var/log/${_PROG_NAME}.log"	 	# program log file
 
-#_PROG_LOCKFILE=""					# lock file
+_PROG_PID="$$"						# program pid
+_PROG_LOGFILE="/var/log/${_PROG_NAME}.log"	 	# program log file
+_PROG_LOCKFILE="/var/run/${_PROG_NAME}.pid"		# program lock file, if applicable
+
 
 # Other global variables, if applicable
 # _GLOBAL_VAR1="value1"
@@ -114,6 +117,8 @@ _exec_help() {
     local _cmd
     local _help_cmd="${1}"
     local _found_cmd=0
+
+    _msg_debug "Entering function '${FUNCNAME}' ..."
     
     for _cmd in ${COMMANDS}; do
 	if [[ "${_cmd}" == "${_help_cmd}" ]]; then
@@ -129,8 +134,40 @@ _exec_help() {
 	_msg_error "Invalid command name specified." 0
 	_msg_error "No such command '${_help_cmd}' found." 64 # EX_USAGE
     fi
+    
+    _msg_debug "Returning from function '${FUNCNAME}' ..."
 
     exit 0 # EX_OK
+}
+
+# Create a lock file of the program
+# return: 0 if lock file was successfully created
+#	  70 (EX_SOFTWARE) if lock file exists
+_create_lock() {
+    
+    _msg_debug "Entering function '${FUNCNAME}' ..."
+    
+    if [[ -n "${_PROG_LOCKFILE}" ]]; then
+	if [[ -f "${_PROG_LOCKFILE}" ]]; then
+	    return 70 # EX_SOFTWARE
+	else
+	    echo "${_PROG_PID}" > "${_PROG_LOCKFILE}"
+	fi
+    fi
+
+    _msg_debug "Returning from function '${FUNCNAME}' ..."
+    
+    return 0 # EX_OK
+}
+
+# Removes any previously created lock files
+_free_lock() {
+    
+    _msg_debug "Entering function '${FUNCNAME}' ..."
+
+    rm -f "${_PROG_LOCKFILE}"
+
+    _msg_debug "Returning from function '${FUNCNAME}' ..."
 }
 
 #
@@ -153,17 +190,21 @@ _usage() {
     # ...
     echo
     echo "For more information on the different commands see '${_PROG_NAME} help <command>'"
-    
+
     exit 64 # EX_USAGE
 }
 
 # Perform a sanity check
 _sanity_check() {
 
+    _msg_debug "Entering function '${FUNCNAME}' ..."
+
     [[ -f "${_PROG_CONFIG}" ]] && _msg_error "Missing configuration file ${_PROG_CONFIG}" 78 # EX_CONFIG
     # ...
     # ...
     # ... and other sanity checks if needed 
+
+    _msg_debug "Returning from function '${FUNCNAME}' ..."
 }
 
 # Display usage information for <cmd1>
@@ -185,6 +226,8 @@ exec_cmd1() {
     local _argv2="${2}"
     local _argvN="${N}"
 
+    _msg_debug "Entering function '${FUNCNAME}' ..."
+
     if [[ $# -ne "<n-arguments" ]]; then
 	usage_cmd1
     fi
@@ -195,12 +238,14 @@ exec_cmd1() {
     # using the "trap - EXIT HUP INT TERM" command
 
     # trap "exec_cmd1_trap_function" EXIT HUP INT TERM
-    
-    _msg_debug "Executing <cmd1> ..."
+
+    _msg_debug "Executing <cmd2> ..."
     
     # ...
     # function body being defined here
     # ...
+    
+    _msg_debug "Returning from function '${FUNCNAME}' ..."
 }
 
 # Display usage information for <cmd2>
@@ -222,6 +267,8 @@ exec_cmd2() {
     local _argv2="${2}"
     local _argvN="${N}"
 
+    _msg_debug "Enterning function '${FUNCNAME}' ..."
+
     if [[ $# -ne "<n-arguments" ]]; then
 	usage_cmd2
     fi
@@ -238,6 +285,8 @@ exec_cmd2() {
     # ...
     # function body being defined here
     # ...
+
+    _msg_debug "Returning from function '${FUNCNAME}' ..."
 }
 
 # Display usage information for <cmdN>
@@ -259,6 +308,8 @@ exec_cmdN() {
     local _argv2="${2}"
     local _argvN="${N}"
 
+    _msg_debug "Entering function '${FUNCNAME}' ..."
+
     if [[ $# -ne "<n-arguments" ]]; then
 	usage_cmdN
     fi
@@ -275,8 +326,9 @@ exec_cmdN() {
     # ...
     # function body being defined here
     # ...
-}
 
+    _msg_debug "Returning from function '${FUNCNAME}' ..."
+}
 
 # 
 # MAIN
@@ -285,6 +337,12 @@ exec_cmdN() {
 # Only root can execute the script?
 if [[ ${EUID} -ne 0 ]]; then
     _msg_error "This program needs to be run as root" 77 # EX_PERM
+fi
+
+# Create a lock file
+if ! _create_lock; then
+    _msg_error "Lock file already exists." 0
+    _msg_error "Please check ${_PROG_LOCKFILE} for stale processes." 70 # EX_SOFTWARE
 fi
 
 # Perform a sanity check
@@ -350,3 +408,7 @@ case "${cmd_name}" in
 	;;
 esac
 
+# Free the lock file
+_free_lock
+
+exit 0 # EX_OK
